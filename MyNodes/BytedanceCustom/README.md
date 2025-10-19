@@ -32,7 +32,7 @@
 1. **填写连接信息（必填）**
    - `Custom Base URL`：例如 `https://ark.cn-beijing.volces.com/api/v3`
    - `Custom API Key`：ByteDance 控制台生成的密钥，将作为 Bearer Token 使用
-   - `Custom Model`：模型或 Endpoint ID，如 `ep-20250827141608-b2l69`
+   - `Custom Model`：模型或 Endpoint ID，如 `ep-2025XXXX...`
 2. **配置业务参数**：按照官方节点习惯调整 Prompt、分辨率、时长、参考图等。
 3. **连接预览/保存节点**：视频输出接 `PreviewVideo`/`SaveVideo`，图片输出接 `PreviewImage`/`SaveImage`。
 4. **运行并观察日志**：命令行会输出提交/轮询/异常信息，便于排查。
