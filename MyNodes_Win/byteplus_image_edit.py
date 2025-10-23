@@ -1,47 +1,28 @@
-"""Text-to-image node using ByteDance API (legacy ComfyUI interface)."""
+"""Image-to-image editing for ByteDance API (legacy interface)."""
 
 from __future__ import annotations
 
 import json
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Dict
 
 from .common import (
     BYTEPLUS_IMAGE_ENDPOINT,
     build_headers,
+    ensure_single_image,
     extract_first_image,
-    post_json,
-    resolve_model_id,
     sanitize_base_url,
+    tensor_to_data_uri,
+    validate_aspect_ratio_range,
     validate_string,
+    resolve_model_id,
+    post_json,
 )
 
 LOGGER = logging.getLogger(__name__)
 
-RECOMMENDED_PRESETS: Tuple[Tuple[str, Optional[int], Optional[int]], ...] = (
-    ("1024x1024 (1:1)", 1024, 1024),
-    ("864x1152 (3:4)", 864, 1152),
-    ("1152x864 (4:3)", 1152, 864),
-    ("1280x720 (16:9)", 1280, 720),
-    ("720x1280 (9:16)", 720, 1280),
-    ("832x1248 (2:3)", 832, 1248),
-    ("1248x832 (3:2)", 1248, 832),
-    ("1512x648 (21:9)", 1512, 648),
-    ("2048x2048 (1:1)", 2048, 2048),
-    ("Custom", None, None),
-)
 
-
-def _pick_dimensions(size_label: str, width: int, height: int) -> Tuple[int, int]:
-    for label, preset_w, preset_h in RECOMMENDED_PRESETS:
-        if label == size_label and preset_w and preset_h:
-            return preset_w, preset_h
-    if not (512 <= width <= 2048 and 512 <= height <= 2048):
-        raise ValueError("Width and height must be within [512, 2048] when using a custom size.")
-    return width, height
-
-
-class ByteDanceImageCustomWin:
+class ByteDanceImageEditCustomWin:
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -64,36 +45,16 @@ class ByteDanceImageCustomWin:
                 "custom_model": (
                     "STRING",
                     {
-                        "default": "seedream-3-0-t2i-250415",
+                        "default": "seededit-3-0-i2i-250628",
                         "multiline": False,
                     },
                 ),
+                "image": ("IMAGE",),
                 "prompt": (
                     "STRING",
                     {
-                        "default": "Describe the scene you want to generate.",
+                        "default": "",
                         "multiline": True,
-                    },
-                ),
-                "size_preset": (
-                    [label for label, _, _ in RECOMMENDED_PRESETS],
-                ),
-                "width": (
-                    "INT",
-                    {
-                        "default": 1024,
-                        "min": 512,
-                        "max": 2048,
-                        "step": 64,
-                    },
-                ),
-                "height": (
-                    "INT",
-                    {
-                        "default": 1024,
-                        "min": 512,
-                        "max": 2048,
-                        "step": 64,
                     },
                 ),
                 "seed": (
@@ -107,7 +68,7 @@ class ByteDanceImageCustomWin:
                 "guidance_scale": (
                     "FLOAT",
                     {
-                        "default": 2.5,
+                        "default": 5.5,
                         "min": 1.0,
                         "max": 10.0,
                         "step": 0.05,
@@ -131,25 +92,25 @@ class ByteDanceImageCustomWin:
         custom_base_url: str,
         custom_api_key: str,
         custom_model: str,
+        image,
         prompt: str,
-        size_preset: str,
-        width: int,
-        height: int,
         seed: int,
         guidance_scale: float,
         watermark: bool,
     ):
         validate_string(prompt)
+        ensure_single_image(image)
+        validate_aspect_ratio_range(image, (1, 3), (3, 1))
 
         base_url = sanitize_base_url(custom_base_url)
         headers = build_headers(custom_api_key)
         model_id = resolve_model_id(custom_model)
-        resolved_width, resolved_height = _pick_dimensions(size_preset, width, height)
+        source_url = tensor_to_data_uri(image, "image/png")
 
         payload: Dict[str, object] = {
             "model": model_id,
             "prompt": prompt.strip(),
-            "size": f"{resolved_width}x{resolved_height}",
+            "image": source_url,
             "seed": seed,
             "watermark": watermark,
             "response_format": "url",
@@ -157,13 +118,7 @@ class ByteDanceImageCustomWin:
         if guidance_scale is not None and "seedream-4" not in model_id.lower():
             payload["guidance_scale"] = guidance_scale
 
-        LOGGER.info(
-            "Requesting ByteDance image generation (model=%s size=%sx%s seed=%s)",
-            model_id,
-            resolved_width,
-            resolved_height,
-            seed,
-        )
+        LOGGER.info("Requesting ByteDance image edit (model=%s seed=%s)", model_id, seed)
 
         body = post_json(base_url, BYTEPLUS_IMAGE_ENDPOINT, headers, payload)
         image_tensor = extract_first_image(body)
